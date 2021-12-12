@@ -1,0 +1,18 @@
+[package]
+name = "struct-merge"
+description = "Provides various merge strategies for structs."
+version = "1.0.4"
+authors = ["Arne Beer <contact@arne.beer>"]
+homepage = "https://github.com/nukesor/struct-merge"
+repository = "https://github.com/nukesor/struct-merge"
+documentation = "https://docs.rs/struct-merge/"
+license = "MIT"
+keywords = ["shell", "command", "parallel", "task", "queue"]
+readme = "README.md"
+edition = "2021"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = "1"
