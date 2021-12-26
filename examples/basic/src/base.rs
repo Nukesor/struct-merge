@@ -1,4 +1,4 @@
 pub struct Base {
-    normal: String,
-    optional: Option<String>,
+    pub normal: String,
+    pub optional: Option<String>,
 }

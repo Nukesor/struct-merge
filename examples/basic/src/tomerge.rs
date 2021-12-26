@@ -17,3 +17,5 @@ pub struct Mixed {
     pub normal: String,
     pub optional: Option<Option<String>>,
 }
+
+pub fn test_func() {}
