@@ -1,0 +1,11 @@
+[package]
+name = "struct-merge-core"
+description = "Trait definitions for merge-struct."
+version = "0.1.0"
+authors = ["Arne Beer <contact@arne.beer>"]
+homepage = "https://github.com/nukesor/struct-merge"
+repository = "https://github.com/nukesor/struct-merge"
+documentation = "https://docs.rs/struct-merge/"
+license = "MIT"
+keywords = ["library", "merge", "struct", "macro"]
+edition = "2021"

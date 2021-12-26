@@ -1,6 +1,6 @@
 [package]
-name = "struct-merge"
-description = "Automatically generated code for various structs merge-strategies."
+name = "struct-merge-macro"
+description = "Proc macro crate for merge-struct."
 version = "0.1.0"
 authors = ["Arne Beer <contact@arne.beer>"]
 homepage = "https://github.com/nukesor/struct-merge"
@@ -10,13 +10,11 @@ license = "MIT"
 keywords = ["library", "merge", "struct", "macro"]
 edition = "2021"
 
-[badges]
-maintenance = { status="actively-developed" }
+[lib]
+proc-macro = true
 
 [dependencies]
-struct-merge-core = { path="core" }
-struct-merge-macro = { path="macro" }
-
-[workspace]
-members = ["macro", "core"]
-exclude = ["examples"]
+syn = { version="1", features=["full"] }
+quote = "1"
+proc-macro2 = "1"
+proc-macro-error = "1"
