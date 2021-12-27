@@ -61,11 +61,12 @@ pub fn struct_merge(args: TokenStream, mut struct_ast: TokenStream) -> TokenStre
             None => continue,
         };
 
+        // Generate the MergeStruct trait implementations.
         match generate_implementations(
             src_struct.ident.clone(),
             path,
-            dest_struct,
             src_struct.clone(),
+            dest_struct,
         ) {
             Some(ast) => impls.push(ast),
             None => continue,

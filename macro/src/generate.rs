@@ -3,6 +3,21 @@ use quote::{quote, ToTokens};
 use syn::spanned::Spanned;
 use syn::{ExprPath, Field, Fields, GenericArgument, Ident, ItemStruct, PathArguments, Type};
 
+macro_rules! equal_type_or_continue {
+    ($src_type:ident, $dest_type:ident, $type:expr) => {
+        if !is_equal_type(&$src_type, &$dest_type) {
+            err!(
+                $src_type,
+                "{}Type '{} cannot be merged into field of type '{}'.",
+                $type,
+                $src_type.to_token_stream(),
+                $dest_type.to_token_stream()
+            );
+            continue;
+        }
+    };
+}
+
 /// Return a Tokenstream that contains all implementations to merge `src` into the `dest`
 /// struct.
 ///
@@ -22,8 +37,8 @@ use syn::{ExprPath, Field, Fields, GenericArgument, Ident, ItemStruct, PathArgum
 pub fn generate_implementations(
     src_ident: Ident,
     dest_path: ExprPath,
-    dest: ItemStruct,
     src: ItemStruct,
+    dest: ItemStruct,
 ) -> Option<TokenStream> {
     let dest_fields = match dest.fields {
         Fields::Named(fields) => fields,
@@ -82,7 +97,7 @@ pub fn generate_implementations(
 /// Generate the `MergeInto::merge_into` function for the fields of the given structs.
 ///
 /// All fields must implement `Clone`.
-pub fn generate_merge_into(
+fn generate_merge_into(
     dest_path: ExprPath,
     fields: Vec<(Field, Field)>,
 ) -> Option<proc_macro2::TokenStream> {
@@ -90,10 +105,84 @@ pub fn generate_merge_into(
     for (src_field, dest_field) in fields {
         let src_ident = src_field.ident;
         let dest_ident = dest_field.ident;
-        let tokens = quote! {
-            dest.#dest_ident = self.#src_ident.clone();
+
+        // Find out, whether the fields are optional or not.
+        let src_field_type = determine_field_type(src_field.ty);
+        let dest_field_type = determine_field_type(dest_field.ty);
+
+        let snippet = match (src_field_type, dest_field_type) {
+            // Both fields have the same type
+            (FieldType::Normal(src_type), FieldType::Normal(dest_type)) => {
+                equal_type_or_continue!(src_type, dest_type, "");
+                quote! {
+                    dest.#dest_ident = self.#src_ident.clone();
+                }
+            }
+            // The src is optional and needs to be `Some(T)` to be merged.
+            (
+                FieldType::Optional {
+                    inner: src_type, ..
+                },
+                FieldType::Normal(dest_type),
+            ) => {
+                equal_type_or_continue!(src_type, dest_type, "Inner ");
+                quote! {
+                    if let Some(value) = self.#src_ident.as_ref() {
+                        dest.#dest_ident = value.clone();
+                    }
+                }
+            }
+            // The dest is optional and needs to be wrapped in `Some(T)` to be merged.
+            (
+                FieldType::Normal(src_type),
+                FieldType::Optional {
+                    inner: dest_type, ..
+                },
+            ) => {
+                equal_type_or_continue!(src_type, dest_type, "");
+                quote! {
+                    dest.#dest_ident = Some(self.#src_ident.clone());
+                }
+            }
+            // Both fields are optional. It can now be either of these:
+            // - (Option<T>, Option<T>)
+            // - (Option<Option<T>>, Option<T>)
+            // - (Option<T>, Option<Option<T>>)
+            (
+                FieldType::Optional {
+                    inner: inner_src_type,
+                    outer: outer_src_type,
+                },
+                FieldType::Optional {
+                    inner: inner_dest_type,
+                    outer: outer_dest_type,
+                },
+            ) => {
+                // Handling the (Option<T>, Option<T>) case
+                if is_equal_type(&inner_src_type, &inner_dest_type) {
+                    quote! {
+                        dest.#dest_ident = self.#src_ident.clone();
+                    }
+                // Handling the (Option<Option<<T>>, Option<T>) case
+                } else if is_equal_type(&inner_src_type, &outer_dest_type) {
+                    quote! {
+                        if let Some(value) = self.#src_ident.as_ref() {
+                            dest.#dest_ident = value.clone();
+                        }
+                    }
+                // Handling the (Option<<T>, Option<Option<T>)> case
+                } else {
+                    equal_type_or_continue!(outer_src_type, inner_dest_type, "");
+                    quote! {
+                        dest.#dest_ident = Some(self.#src_ident.clone());
+                    }
+                }
+            }
+            // Skip anything where either of the fields are invalid
+            (FieldType::Invalid, _) | (_, FieldType::Invalid) => continue,
         };
-        merge_code.extend(vec![tokens]);
+
+        merge_code.extend(vec![snippet]);
     }
 
     let merge_code = merge_code.to_token_stream();
@@ -105,7 +194,7 @@ pub fn generate_merge_into(
     })
 }
 
-pub fn generate_merge_into_owned(
+fn generate_merge_into_owned(
     dest_path: ExprPath,
     fields: Vec<(Field, Field)>,
 ) -> Option<proc_macro2::TokenStream> {
@@ -113,10 +202,84 @@ pub fn generate_merge_into_owned(
     for (src_field, dest_field) in fields {
         let src_ident = src_field.ident;
         let dest_ident = dest_field.ident;
-        let tokens = quote! {
-            dest.#dest_ident = self.#src_ident;
+
+        // Find out, whether the fields are optional or not.
+        let src_field_type = determine_field_type(src_field.ty);
+        let dest_field_type = determine_field_type(dest_field.ty);
+
+        let snippet = match (src_field_type, dest_field_type) {
+            // Both fields have the same type
+            (FieldType::Normal(src_type), FieldType::Normal(dest_type)) => {
+                equal_type_or_continue!(src_type, dest_type, "");
+                quote! {
+                    dest.#dest_ident = self.#src_ident;
+                }
+            }
+            // The src is optional and needs to be `Some(T)` to be merged.
+            (
+                FieldType::Optional {
+                    inner: src_type, ..
+                },
+                FieldType::Normal(dest_type),
+            ) => {
+                equal_type_or_continue!(src_type, dest_type, "Inner");
+                quote! {
+                    if let Some(value) = self.#src_ident {
+                        dest.#dest_ident = value;
+                    }
+                }
+            }
+            // The dest is optional and needs to be wrapped in `Some(T)` to be merged.
+            (
+                FieldType::Normal(src_type),
+                FieldType::Optional {
+                    inner: dest_type, ..
+                },
+            ) => {
+                equal_type_or_continue!(src_type, dest_type, "");
+                quote! {
+                    dest.#dest_ident = Some(self.#src_ident);
+                }
+            }
+            // Both fields are optional. It can now be either of these:
+            // - (Option<T>, Option<T>)
+            // - (Option<Option<T>>, Option<T>)
+            // - (Option<T>, Option<Option<T>>)
+            (
+                FieldType::Optional {
+                    inner: inner_src_type,
+                    outer: outer_src_type,
+                },
+                FieldType::Optional {
+                    inner: inner_dest_type,
+                    outer: outer_dest_type,
+                },
+            ) => {
+                // Handling the (Option<T>, Option<T>) case
+                if is_equal_type(&inner_src_type, &inner_dest_type) {
+                    quote! {
+                        dest.#dest_ident = self.#src_ident;
+                    }
+                // Handling the (Option<Option<<T>>, Option<T>) case
+                } else if is_equal_type(&inner_src_type, &outer_dest_type) {
+                    quote! {
+                        if let Some(value) = self.#src_ident {
+                            dest.#dest_ident = value;
+                        }
+                    }
+                // Handling the (Option<<T>, Option<Option<T>)> case
+                } else {
+                    equal_type_or_continue!(outer_src_type, inner_dest_type, "");
+                    quote! {
+                        dest.#dest_ident = Some(self.#src_ident);
+                    }
+                }
+            }
+            // Skip anything where either of the fields are invalid
+            (FieldType::Invalid, _) | (_, FieldType::Invalid) => continue,
         };
-        merge_code.extend(vec![tokens]);
+
+        merge_code.extend(vec![snippet]);
     }
 
     let merge_code = merge_code.to_token_stream();
@@ -128,12 +291,23 @@ pub fn generate_merge_into_owned(
     })
 }
 
+/// Check whether two given [Type]s are of the same type.
+/// If they aren't, an error is added to the src_type and the function returns `false`.
+fn is_equal_type(src_type: &Type, dest_type: &Type) -> bool {
+    // This is a reather stupid way of comparing equality, but it has to do for now.
+    if src_type.to_token_stream().to_string() != dest_type.to_token_stream().to_string() {
+        return false;
+    }
+
+    true
+}
+
 /// Internal representation of parsed types
 ///
 /// We either expect fields to have a generic type `T` or `Option<T>`.
 enum FieldType {
     Normal(Type),
-    Optional(Type),
+    Optional { inner: Type, outer: Type },
     Invalid,
 }
 
@@ -141,7 +315,7 @@ enum FieldType {
 ///
 /// This detected variant is represented via the [FieldType] enum.
 /// Invalid or unsupported types return the `FieldType::Invalid` variant.
-fn determine_type(ty: Type) -> FieldType {
+fn determine_field_type(ty: Type) -> FieldType {
     match ty.clone() {
         Type::Path(type_path) => {
             // The path is relative to `Self` and thereby non-optional
@@ -189,7 +363,10 @@ fn determine_type(ty: Type) -> FieldType {
 
             // This argument must be a type:
             match generic_arg {
-                GenericArgument::Type(inner_type) => FieldType::Optional(inner_type.clone()),
+                GenericArgument::Type(inner_type) => FieldType::Optional {
+                    inner: inner_type.clone(),
+                    outer: ty,
+                },
                 _ => {
                     err!(ty, "Option path argument isn't a type.");
                     FieldType::Invalid
