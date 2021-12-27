@@ -1,7 +1,7 @@
 use proc_macro::TokenStream;
-use quote::{quote, quote_spanned, ToTokens};
+use quote::{quote, ToTokens};
 use syn::spanned::Spanned;
-use syn::{ExprPath, Field, Fields, Ident, ItemStruct};
+use syn::{ExprPath, Field, Fields, GenericArgument, Ident, ItemStruct, PathArguments, Type};
 
 /// Return a Tokenstream that contains all implementations to merge `src` into the `dest`
 /// struct.
@@ -81,7 +81,7 @@ pub fn generate_implementations(
 
 /// Generate the `MergeInto::merge_into` function for the fields of the given structs.
 ///
-/// All fields must implement `Clone`
+/// All fields must implement `Clone`.
 pub fn generate_merge_into(
     dest_path: ExprPath,
     fields: Vec<(Field, Field)>,
@@ -126,4 +126,82 @@ pub fn generate_merge_into_owned(
             #merge_code
         }
     })
+}
+
+/// Internal representation of parsed types
+///
+/// We either expect fields to have a generic type `T` or `Option<T>`.
+enum FieldType {
+    Normal(Type),
+    Optional(Type),
+    Invalid,
+}
+
+/// This function takes any [Type] and determines, whether it's an `Option<T>` or just a `T`.
+///
+/// This detected variant is represented via the [FieldType] enum.
+/// Invalid or unsupported types return the `FieldType::Invalid` variant.
+fn determine_type(ty: Type) -> FieldType {
+    match ty.clone() {
+        Type::Path(type_path) => {
+            // The path is relative to `Self` and thereby non-optional
+            if !type_path.qself.is_none() {
+                return FieldType::Normal(ty);
+            }
+
+            let path = type_path.path;
+
+            // `Option<T>` shouldn't have a leading colon or multiple segments.
+            if path.leading_colon.is_some() || path.segments.len() > 1 {
+                return FieldType::Normal(ty);
+            }
+
+            // The path should have at least one segment.
+            let segment = if let Some(segment) = path.segments.iter().next() {
+                segment
+            } else {
+                return FieldType::Normal(ty);
+            };
+
+            // The segment isn't an option.
+            if segment.ident != "Option" {
+                return FieldType::Normal(ty);
+            }
+
+            // Get the angle brackets
+            let generic_arg = match &segment.arguments {
+                PathArguments::AngleBracketed(params) => {
+                    if let Some(arg) = params.args.iter().next() {
+                        arg
+                    } else {
+                        err!(ty, "Option doesn't have a type parameter..");
+                        return FieldType::Invalid;
+                    }
+                }
+                _ => {
+                    err!(
+                        ty,
+                        "Unknown path arguments behind Option. Please report this."
+                    );
+                    return FieldType::Invalid;
+                }
+            };
+
+            // This argument must be a type:
+            match generic_arg {
+                GenericArgument::Type(inner_type) => FieldType::Optional(inner_type.clone()),
+                _ => {
+                    err!(ty, "Option path argument isn't a type.");
+                    FieldType::Invalid
+                }
+            }
+        }
+        _ => {
+            err!(
+                ty,
+                "Found a non-path type. This isn't supported in struct-merge yet."
+            );
+            return FieldType::Invalid;
+        }
+    }
 }
