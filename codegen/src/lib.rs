@@ -92,7 +92,7 @@ fn struct_merge_base(args: TokenStream, mut struct_ast: TokenStream, mode: Mode)
         let dest_struct = match get_struct_from_path(src_root_path.clone(), path.clone()) {
             Ok(ast) => ast,
             Err(error) => {
-                impls.push(error.into());
+                impls.push(error);
                 continue;
             }
         };
@@ -107,14 +107,14 @@ fn struct_merge_base(args: TokenStream, mut struct_ast: TokenStream, mode: Mode)
         ) {
             Ok(ast) => impls.push(ast),
             Err(error) => {
-                impls.push(error.into());
+                impls.push(error);
                 continue;
             }
         }
     }
 
     // Merge all generated pieces of the code with the original unaltered struct.
-    struct_ast.extend(impls.into_iter().map(|stream| TokenStream::from(stream)));
+    struct_ast.extend(impls.into_iter().map(TokenStream::from));
 
     // Hand the final output tokens back to the compiler.
     struct_ast
