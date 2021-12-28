@@ -14,9 +14,8 @@ edition = "2021"
 maintenance = { status="actively-developed" }
 
 [dependencies]
-struct-merge-core = { path="core" }
 struct-merge-macro = { path="macro" }
 
 [workspace]
-members = ["macro", "core"]
+members = ["macro"]
 exclude = ["examples"]
