@@ -50,11 +50,73 @@ mod generate;
 mod module;
 mod path;
 
+/// Implement the `struct_merge::StructMerge<T>` trait for all given targets.
+///
+/// The targets struct paths have to be
+/// - absolute
+/// - relative to the current crate
+/// - contained in this crate
+///
+/// Eiter a single struct or a list of structs can be provided.
+/// `StructMerge<T>` will then be implemented on each given target struct.
+///
+/// Examples:
+/// - `#[struct_merge(crate::structs::Base)]`
+/// - `#[struct_merge([crate::structs::Base, crate:structs::Other])]`
+///
+/// `struct.rs`
+/// ```ignore
+/// use struct_merge::struct_merge;
+///
+/// pub struct Base {
+///     pub test: String,
+/// }
+///
+/// pub struct Other {
+///     pub test: String,
+/// }
+///
+/// #[struct_merge([crate::structs::Base, crate:structs::Other])]
+/// pub struct Test {
+///     pub test: String,
+/// }
+/// ```
 #[proc_macro_attribute]
 pub fn struct_merge(args: TokenStream, struct_ast: TokenStream) -> TokenStream {
     struct_merge_base(args, struct_ast, Mode::Owned)
 }
 
+/// Implement the `struct_merge::StructMergeRef<T>` trait for all given targets.
+///
+/// The targets struct paths have to be
+/// - absolute
+/// - relative to the current crate
+/// - contained in this crate
+///
+/// Eiter a single struct or a list of structs can be provided.
+/// `StructMergeRef<T>` will then be implemented on each given target struct.
+///
+/// Examples:
+/// - `#[struct_merge_ref(crate::structs::Base)]`
+/// - `#[struct_merge_ref([crate::structs::Base, crate:structs::Other])]`
+///
+/// `struct.rs`
+/// ```ignore
+/// use struct_merge::struct_merge_ref;
+///
+/// pub struct Base {
+///     pub test: String,
+/// }
+///
+/// pub struct Other {
+///     pub test: String,
+/// }
+///
+/// #[struct_merge_ref([crate::structs::Base, crate:structs::Other])]
+/// pub struct Test {
+///     pub test: String,
+/// }
+/// ```
 #[proc_macro_attribute]
 pub fn struct_merge_ref(args: TokenStream, struct_ast: TokenStream) -> TokenStream {
     struct_merge_base(args, struct_ast, Mode::Borrowed)
