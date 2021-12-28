@@ -138,27 +138,9 @@ fn merge_soft(src_ident: Ident, fields: Vec<(Field, Field)>) -> Option<proc_macr
         let dest_field_type = determine_field_type(dest_field.ty);
 
         let snippet = match (src_field_type, dest_field_type) {
-            // Both fields have the same type
-            (FieldType::Normal(src_type), FieldType::Normal(dest_type)) => {
-                equal_type_or_continue!(src_type, dest_type, "");
-                quote! {
-                    self.#dest_ident = src.#src_ident;
-                }
-            }
-            // The src is optional and needs to be `Some(T)` to be merged.
-            (
-                FieldType::Optional {
-                    inner: src_type, ..
-                },
-                FieldType::Normal(dest_type),
-            ) => {
-                equal_type_or_continue!(src_type, dest_type, "Inner");
-                quote! {
-                    if let Some(value) = src.#src_ident {
-                        self.#dest_ident = value;
-                    }
-                }
-            }
+            // Soft merge only applies if the dest field is `Optional`.
+            (FieldType::Normal(_), FieldType::Normal(_))
+            | (FieldType::Optional { .. }, FieldType::Normal(_)) => continue,
             // The dest is optional and needs to be wrapped in `Some(T)` to be merged.
             (
                 FieldType::Normal(src_type),
