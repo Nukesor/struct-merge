@@ -1,4 +1,4 @@
-pub use struct_merge_macro::*;
+pub use struct_merge_codegen::*;
 
 /// Merge another struct into Self.
 pub trait StructMerge<Src> {

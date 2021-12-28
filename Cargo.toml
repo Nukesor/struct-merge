@@ -7,15 +7,15 @@ homepage = "https://github.com/nukesor/struct-merge"
 repository = "https://github.com/nukesor/struct-merge"
 documentation = "https://docs.rs/struct-merge/"
 license = "MIT"
-keywords = ["library", "merge", "struct", "macro"]
+keywords = ["library", "merge", "struct", "proc-macro"]
 edition = "2021"
 
 [badges]
 maintenance = { status="actively-developed" }
 
 [dependencies]
-struct-merge-macro = { path="macro" }
+struct-merge-codegen = { path="codegen" }
 
 [workspace]
-members = ["macro"]
+members = ["codegen"]
 exclude = ["examples"]

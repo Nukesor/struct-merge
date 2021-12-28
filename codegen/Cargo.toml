@@ -1,6 +1,6 @@
 [package]
-name = "struct-merge-macro"
-description = "Proc macro crate for merge-struct."
+name = "struct-merge-codegen"
+description = "Proc macro codegen crate for merge-struct."
 version = "0.1.0"
 authors = ["Arne Beer <contact@arne.beer>"]
 homepage = "https://github.com/nukesor/struct-merge"
