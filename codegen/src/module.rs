@@ -6,17 +6,6 @@ use syn::{spanned::Spanned, ExprPath, Ident, Item, ItemStruct, Token};
 /// This function takes a path to a struct and returns the AST of that struct.
 ///
 /// There is no easy way to do module resolution during this stage of the compilation.
-/// Some non-trivial limitations:
-/// - Non-public structs. I.e. structs that aren't fully internally visible.
-/// - Alternating mix of `mod {}` code blocks and actual file modules.
-/// - Code isn't located in `src` folder. We have to parse the `Cargo.toml` to resolve this.
-///
-/// There are many path resolution methods not implemented.
-/// - [x] Import path is equivalent to file path.
-/// - [ ] struct in (potentially nested or alterating) `mod {}` block in file.
-/// - [ ] Struct located at root of crate. E.g. `lib.rs`.
-/// - [ ] Src root dir isn't `src'.
-/// - [ ] Struct is located in integration tests.
 pub fn get_struct_from_path(
     mut file_path: PathBuf,
     path: ExprPath,

@@ -3,6 +3,7 @@ use struct_merge::{struct_merge, struct_merge_ref};
 pub struct Base {
     pub normal: String,
     pub optional: Option<String>,
+    pub ignored: String,
 }
 
 impl Base {
@@ -10,6 +11,7 @@ impl Base {
         Base {
             normal: "base".to_string(),
             optional: Some("base".to_string()),
+            ignored: "base".to_string(),
         }
     }
 }
