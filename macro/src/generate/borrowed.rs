@@ -1,3 +1,4 @@
+use proc_macro2::TokenStream;
 use quote::{quote, ToTokens};
 use syn::{ExprPath, Field, Ident};
 
@@ -8,34 +9,27 @@ pub fn impl_borrowed(
     src_ident: Ident,
     dest_path: ExprPath,
     fields: Vec<(Field, Field)>,
-) -> Option<proc_macro::TokenStream> {
-    let mut functions_tokens = proc_macro2::TokenStream::new();
+) -> TokenStream {
+    let mut functions_tokens = TokenStream::new();
 
-    match merge_ref(src_ident.clone(), fields.clone()) {
-        Some(stream) => functions_tokens.extend(vec![stream]),
-        None => return None,
-    }
+    let stream = merge_ref(src_ident.clone(), fields.clone());
+    functions_tokens.extend(vec![stream]);
 
-    match merge_ref_soft(src_ident.clone(), fields) {
-        Some(stream) => functions_tokens.extend(vec![stream]),
-        None => return None,
-    }
+    let stream = merge_ref_soft(src_ident.clone(), fields);
+    functions_tokens.extend(vec![stream]);
 
-    Some(
-        quote! {
-            impl struct_merge::StructMergeRef<#src_ident> for #dest_path {
-                #functions_tokens
-            }
+    quote! {
+        impl struct_merge::StructMergeRef<#src_ident> for #dest_path {
+            #functions_tokens
         }
-        .into(),
-    )
+    }
 }
 
 /// Generate the [struct_merge::StructMergeRef::merge_ref] function for given structs.
 ///
 /// All fields must implement `Clone`.
-fn merge_ref(src_ident: Ident, fields: Vec<(Field, Field)>) -> Option<proc_macro2::TokenStream> {
-    let mut merge_code = proc_macro2::TokenStream::new();
+fn merge_ref(src_ident: Ident, fields: Vec<(Field, Field)>) -> TokenStream {
+    let mut merge_code = TokenStream::new();
     for (src_field, dest_field) in fields {
         let src_ident = src_field.ident;
         let dest_ident = dest_field.ident;
@@ -47,10 +41,14 @@ fn merge_ref(src_ident: Ident, fields: Vec<(Field, Field)>) -> Option<proc_macro
         let snippet = match (src_field_type, dest_field_type) {
             // Both fields have the same type
             (FieldType::Normal(src_type), FieldType::Normal(dest_type)) => {
-                equal_type_or_continue!(src_type, dest_type, "");
-                quote! {
-                    self.#dest_ident = src.#src_ident.clone();
-                }
+                equal_type_or_continue!(
+                    src_type,
+                    dest_type,
+                    "",
+                    quote! {
+                        self.#dest_ident = src.#src_ident.clone();
+                    }
+                )
             }
             // The src is optional and needs to be `Some(T)` to be merged.
             (
@@ -59,12 +57,16 @@ fn merge_ref(src_ident: Ident, fields: Vec<(Field, Field)>) -> Option<proc_macro
                 },
                 FieldType::Normal(dest_type),
             ) => {
-                equal_type_or_continue!(src_type, dest_type, "Inner ");
-                quote! {
-                    if let Some(value) = src.#src_ident.as_ref() {
-                        self.#dest_ident = value.clone();
+                equal_type_or_continue!(
+                    src_type,
+                    dest_type,
+                    "Inner ",
+                    quote! {
+                        if let Some(value) = src.#src_ident.as_ref() {
+                            self.#dest_ident = value.clone();
+                        }
                     }
-                }
+                )
             }
             // The dest is optional and needs to be wrapped in `Some(T)` to be merged.
             (
@@ -73,10 +75,14 @@ fn merge_ref(src_ident: Ident, fields: Vec<(Field, Field)>) -> Option<proc_macro
                     inner: dest_type, ..
                 },
             ) => {
-                equal_type_or_continue!(src_type, dest_type, "");
-                quote! {
-                    self.#dest_ident = Some(src.#src_ident.clone());
-                }
+                equal_type_or_continue!(
+                    src_type,
+                    dest_type,
+                    "",
+                    quote! {
+                        self.#dest_ident = Some(src.#src_ident.clone());
+                    }
+                )
             }
             // Both fields are optional. It can now be either of these:
             // - (Option<T>, Option<T>)
@@ -106,10 +112,14 @@ fn merge_ref(src_ident: Ident, fields: Vec<(Field, Field)>) -> Option<proc_macro
                     }
                 // Handling the (Option<<T>, Option<Option<T>)> case
                 } else {
-                    equal_type_or_continue!(outer_src_type, inner_dest_type, "");
-                    quote! {
-                        self.#dest_ident = Some(src.#src_ident.clone());
-                    }
+                    equal_type_or_continue!(
+                        outer_src_type,
+                        inner_dest_type,
+                        "",
+                        quote! {
+                            self.#dest_ident = Some(src.#src_ident.clone());
+                        }
+                    )
                 }
             }
             // Skip anything where either of the fields are invalid
@@ -121,21 +131,18 @@ fn merge_ref(src_ident: Ident, fields: Vec<(Field, Field)>) -> Option<proc_macro
 
     let merge_code = merge_code.to_token_stream();
 
-    Some(quote! {
+    quote! {
         fn merge_ref(&mut self, src: &#src_ident) {
             #merge_code
         }
-    })
+    }
 }
 
 /// Generate the [struct_merge::StructMergeRef::merge_ref_soft] function for given structs.
 ///
 /// All fields must implement `Clone`.
-fn merge_ref_soft(
-    src_ident: Ident,
-    fields: Vec<(Field, Field)>,
-) -> Option<proc_macro2::TokenStream> {
-    let mut merge_code = proc_macro2::TokenStream::new();
+fn merge_ref_soft(src_ident: Ident, fields: Vec<(Field, Field)>) -> TokenStream {
+    let mut merge_code = TokenStream::new();
     for (src_field, dest_field) in fields {
         let src_ident = src_field.ident;
         let dest_ident = dest_field.ident;
@@ -155,12 +162,16 @@ fn merge_ref_soft(
                     inner: dest_type, ..
                 },
             ) => {
-                equal_type_or_continue!(src_type, dest_type, "");
-                quote! {
-                    if self.#dest_ident.is_none() {
-                        self.#dest_ident = Some(src.#src_ident.clone());
+                equal_type_or_continue!(
+                    src_type,
+                    dest_type,
+                    "",
+                    quote! {
+                        if self.#dest_ident.is_none() {
+                            self.#dest_ident = Some(src.#src_ident.clone());
+                        }
                     }
-                }
+                )
             }
             // Both fields are optional. It can now be either of these:
             // - (Option<T>, Option<T>)
@@ -194,12 +205,16 @@ fn merge_ref_soft(
                     }
                 // Handling the (Option<<T>, Option<Option<T>)> case
                 } else {
-                    equal_type_or_continue!(outer_src_type, inner_dest_type, "");
-                    quote! {
-                        if self.#dest_ident.is_none() {
-                            self.#dest_ident = Some(src.#src_ident.clone());
+                    equal_type_or_continue!(
+                        outer_src_type,
+                        inner_dest_type,
+                        "",
+                        quote! {
+                            if self.#dest_ident.is_none() {
+                                self.#dest_ident = Some(src.#src_ident.clone());
+                            }
                         }
-                    }
+                    )
                 }
             }
             // Skip anything where either of the fields are invalid
@@ -211,9 +226,9 @@ fn merge_ref_soft(
 
     let merge_code = merge_code.to_token_stream();
 
-    Some(quote! {
+    quote! {
         fn merge_ref_soft(&mut self, src: &#src_ident) {
             #merge_code
         }
-    })
+    }
 }

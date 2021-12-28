@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use proc_macro2::TokenStream;
 use syn::{spanned::Spanned, ExprPath, Ident, Item, ItemStruct, Token};
 
 /// This function takes a path to a struct and returns the AST of that struct.
@@ -16,7 +17,10 @@ use syn::{spanned::Spanned, ExprPath, Ident, Item, ItemStruct, Token};
 /// - [ ] Struct located at root of crate. E.g. `lib.rs`.
 /// - [ ] Src root dir isn't `src'.
 /// - [ ] Struct is located in integration tests.
-pub fn get_struct_from_path(mut file_path: PathBuf, path: ExprPath) -> Option<ItemStruct> {
+pub fn get_struct_from_path(
+    mut file_path: PathBuf,
+    path: ExprPath,
+) -> Result<ItemStruct, TokenStream> {
     // Start searching for files from the project root.
     let path_span = path.span();
 
@@ -54,8 +58,7 @@ pub fn get_struct_from_path(mut file_path: PathBuf, path: ExprPath) -> Option<It
             file_path.set_extension("rs");
 
             if !file_path.exists() {
-                err!(segment, "Cannot find file for path: {:?}", file_path);
-                return None;
+                return Err(err!(segment, "Cannot find file for path: {:?}", file_path));
             }
 
             // TODO: This breaks if there are non-file modules.
@@ -79,17 +82,15 @@ pub fn get_struct_from_path(mut file_path: PathBuf, path: ExprPath) -> Option<It
     for item in file_ast.items.into_iter() {
         if let Item::Struct(item_struct) = item {
             if item_struct.ident == target_struct_name {
-                return Some(item_struct);
+                return Ok(item_struct);
             }
         }
     }
 
-    err!(
+    Err(err!(
         path_span,
         "Didn't find struct {} in file {:?}",
         target_struct_name,
         &file_path
-    );
-
-    None
+    ))
 }

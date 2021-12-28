@@ -1,4 +1,4 @@
-use proc_macro::TokenStream;
+use proc_macro2::TokenStream;
 use quote::ToTokens;
 use syn::spanned::Spanned;
 use syn::{ExprPath, Fields, GenericArgument, Ident, ItemStruct, PathArguments, Type};
@@ -6,7 +6,7 @@ use syn::{ExprPath, Fields, GenericArgument, Ident, ItemStruct, PathArguments, T
 use crate::Mode;
 
 macro_rules! equal_type_or_continue {
-    ($src_type:ident, $dest_type:ident, $type:expr) => {
+    ($src_type:ident, $dest_type:ident, $type:expr, $correct_macro:expr) => {
         if !is_equal_type(&$src_type, &$dest_type) {
             err!(
                 $src_type,
@@ -14,8 +14,9 @@ macro_rules! equal_type_or_continue {
                 $type,
                 $src_type.to_token_stream(),
                 $dest_type.to_token_stream()
-            );
-            continue;
+            )
+        } else {
+            $correct_macro
         }
     };
 }
@@ -44,22 +45,23 @@ pub(crate) fn generate_impl(
     dest_path: ExprPath,
     src: ItemStruct,
     dest: ItemStruct,
-) -> Option<TokenStream> {
+) -> Result<TokenStream, TokenStream> {
     let dest_fields = match dest.fields {
         Fields::Named(fields) => fields,
         _ => {
-            err!(
+            return Err(err!(
                 dest,
                 "struct_merge only works on structs with named fields."
-            );
-            return None;
+            ));
         }
     };
     let src_fields = match src.fields {
         Fields::Named(fields) => fields,
         _ => {
-            err!(src, "struct_merge only works on structs with named fields.");
-            return None;
+            return Err(err!(
+                src,
+                "struct_merge only works on structs with named fields."
+            ));
         }
     };
 
@@ -76,8 +78,12 @@ pub(crate) fn generate_impl(
     // If any of the functions fails to be generated, we skip the impl for this struct.
     // The errors will be generated in the individual token generator functions.
     match *mode {
-        Mode::Owned => owned::impl_owned(src_ident, dest_path, similar_fields),
-        Mode::Borrowed => borrowed::impl_borrowed(src_ident, dest_path, similar_fields),
+        Mode::Owned => Ok(owned::impl_owned(src_ident, dest_path, similar_fields)),
+        Mode::Borrowed => Ok(borrowed::impl_borrowed(
+            src_ident,
+            dest_path,
+            similar_fields,
+        )),
     }
 }
 

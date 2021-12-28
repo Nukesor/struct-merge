@@ -1,5 +1,3 @@
-#![feature(proc_macro_diagnostic)]
-
 use generate::generate_impl;
 use module::get_struct_from_path;
 use path::{get_root_src_path, parse_input_paths};
@@ -9,12 +7,26 @@ use syn::{parse_macro_input, Expr, ItemStruct};
 /// Helper macro, which attaches an error to a given span.
 macro_rules! err {
     ($span:ident, $($text:expr),*) => {
-        $span.span()
-            .unwrap()
-            .error(format!($($text,)*))
-            .emit();
+        {
+            let message = format!($($text,)*);
+            let span = $span.span();
+            quote::quote_spanned!( span => compile_error!(#message); )
+        }
     }
 }
+
+// Uncomment this as soon as proc_macro_diagnostic land in stable.
+//
+//#![feature(proc_macro_diagnostic)]
+///// Helper macro, which attaches an error to a given span.
+//macro_rules! err {
+//    ($span:ident, $($text:expr),*) => {
+//        $span.span()
+//            .unwrap()
+//            .error(format!($($text,)*))
+//            .emit();
+//    }
+//}
 
 /// Helper macro, which takes a result.
 /// Ok(T) => simply return the T
@@ -28,8 +40,7 @@ macro_rules! ok_or_err_return {
         match $expr {
             Ok(result) => result,
             Err(error) =>  {
-                err!($span, $($text,)* error);
-                return None;
+                return Err(err!($span, $($text,)* error));
             }
         }
     }
@@ -79,8 +90,11 @@ fn struct_merge_base(args: TokenStream, mut struct_ast: TokenStream, mode: Mode)
     for path in paths {
         // Make sure we found the struct at that path.
         let dest_struct = match get_struct_from_path(src_root_path.clone(), path.clone()) {
-            Some(ast) => ast,
-            None => continue,
+            Ok(ast) => ast,
+            Err(error) => {
+                impls.push(error.into());
+                continue;
+            }
         };
 
         // Generate the MergeStruct trait implementations.
@@ -91,13 +105,16 @@ fn struct_merge_base(args: TokenStream, mut struct_ast: TokenStream, mode: Mode)
             src_struct.clone(),
             dest_struct,
         ) {
-            Some(ast) => impls.push(ast),
-            None => continue,
+            Ok(ast) => impls.push(ast),
+            Err(error) => {
+                impls.push(error.into());
+                continue;
+            }
         }
     }
 
     // Merge all generated pieces of the code with the original unaltered struct.
-    struct_ast.extend(impls);
+    struct_ast.extend(impls.into_iter().map(|stream| TokenStream::from(stream)));
 
     // Hand the final output tokens back to the compiler.
     struct_ast
