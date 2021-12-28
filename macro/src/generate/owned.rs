@@ -4,19 +4,19 @@ use syn::{ExprPath, Field, Ident};
 use super::*;
 
 /// Generate the implementation of [struct_merge::StructMerge] for given structs.
-pub fn generate_impl_owned(
+pub fn impl_owned(
     src_ident: Ident,
     dest_path: ExprPath,
     fields: Vec<(Field, Field)>,
 ) -> Option<proc_macro::TokenStream> {
     let mut functions_tokens = proc_macro2::TokenStream::new();
 
-    match generate_merge(src_ident.clone(), fields.clone()) {
+    match merge(src_ident.clone(), fields.clone()) {
         Some(stream) => functions_tokens.extend(vec![stream]),
         None => return None,
     }
 
-    match generate_merge_soft(src_ident.clone(), fields.clone()) {
+    match merge_soft(src_ident.clone(), fields) {
         Some(stream) => functions_tokens.extend(vec![stream]),
         None => return None,
     }
@@ -32,10 +32,7 @@ pub fn generate_impl_owned(
 }
 
 /// Generate the [struct_merge::StructMerge::merge] function for the given structs.
-fn generate_merge(
-    src_ident: Ident,
-    fields: Vec<(Field, Field)>,
-) -> Option<proc_macro2::TokenStream> {
+fn merge(src_ident: Ident, fields: Vec<(Field, Field)>) -> Option<proc_macro2::TokenStream> {
     let mut merge_code = proc_macro2::TokenStream::new();
     for (src_field, dest_field) in fields {
         let src_ident = src_field.ident;
@@ -130,10 +127,7 @@ fn generate_merge(
 }
 
 /// Generate the [struct_merge::StructMerge::merge_soft] function for the given structs.
-fn generate_merge_soft(
-    src_ident: Ident,
-    fields: Vec<(Field, Field)>,
-) -> Option<proc_macro2::TokenStream> {
+fn merge_soft(src_ident: Ident, fields: Vec<(Field, Field)>) -> Option<proc_macro2::TokenStream> {
     let mut merge_code = proc_macro2::TokenStream::new();
     for (src_field, dest_field) in fields {
         let src_ident = src_field.ident;

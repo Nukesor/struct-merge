@@ -76,7 +76,7 @@ fn struct_merge_base(args: TokenStream, mut struct_ast: TokenStream, mode: Mode)
 
     // Go through all paths and process the respective struct.
     let mut impls = Vec::new();
-    for path in paths.clone() {
+    for path in paths {
         // Make sure we found the struct at that path.
         let dest_struct = match get_struct_from_path(src_root_path.clone(), path.clone()) {
             Some(ast) => ast,

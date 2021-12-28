@@ -4,7 +4,7 @@ use syn::{ExprPath, Field, Ident};
 use super::*;
 
 /// Generate the implementation of [struct_merge::StructMergeRef] for given structs.
-pub fn generate_impl_borrowed(
+pub fn impl_borrowed(
     src_ident: Ident,
     dest_path: ExprPath,
     fields: Vec<(Field, Field)>,
@@ -16,7 +16,7 @@ pub fn generate_impl_borrowed(
         None => return None,
     }
 
-    match merge_ref_soft(src_ident.clone(), fields.clone()) {
+    match merge_ref_soft(src_ident.clone(), fields) {
         Some(stream) => functions_tokens.extend(vec![stream]),
         None => return None,
     }

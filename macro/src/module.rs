@@ -18,7 +18,7 @@ use syn::{spanned::Spanned, ExprPath, Ident, Item, ItemStruct, Token};
 /// - [ ] Struct is located in integration tests.
 pub fn get_struct_from_path(mut file_path: PathBuf, path: ExprPath) -> Option<ItemStruct> {
     // Start searching for files from the project root.
-    let path_span = path.span().clone();
+    let path_span = path.span();
 
     let mut segments = path.path.segments.into_iter().peekable();
     // Make sure the root of the path is the current crate.
@@ -40,7 +40,7 @@ pub fn get_struct_from_path(mut file_path: PathBuf, path: ExprPath) -> Option<It
 
         // The last identifier is the the name of the struct.
         // Break, so it doen't get added to the path.
-        if let None = segments.peek() {
+        if segments.peek().is_none() {
             break segment.ident;
         }
 
@@ -91,5 +91,5 @@ pub fn get_struct_from_path(mut file_path: PathBuf, path: ExprPath) -> Option<It
         &file_path
     );
 
-    return None;
+    None
 }

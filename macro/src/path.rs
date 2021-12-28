@@ -32,7 +32,7 @@ pub fn parse_input_paths(args: Expr) -> Vec<ExprPath> {
                 "or a vector of paths, such as '[crate::your::path]'."
             );
 
-            return vec![];
+            vec![]
         }
     }
 }
@@ -52,7 +52,7 @@ pub fn get_root_src_path(parsed_args: &Expr) -> Option<PathBuf> {
             );
 
             // Exit early, as there's nothing we can do if the path doesn't exist.
-            return None;
+            None
         }
         Ok(path) => {
             let mut path = PathBuf::from(path);
@@ -71,7 +71,7 @@ pub fn get_root_src_path(parsed_args: &Expr) -> Option<PathBuf> {
             // For everything else, we would have to manually parse the Cargo manifest.
             path.push("src");
 
-            return Some(path);
+            Some(path)
         }
-    };
+    }
 }

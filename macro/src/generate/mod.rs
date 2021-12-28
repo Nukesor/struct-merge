@@ -27,18 +27,17 @@ mod owned;
 /// struct.
 ///
 /// Known Limitations:
-/// - No proper error message on fields with same Tokens, but different generics.
 /// - Error, when using different generic aliases that have same type.
 /// - Visibility of the `dest` struct isn't taken into account.
-///     This will get better, when module resolution is done properly.
+///     This will get better when module resolution is done properly.
+/// - Type equality cannot be properly ensured at this stage.
+///     Right now, we only check if the given tokens for a type are the same.
+///     However, it's extremely difficult to found out the actual type from a simple token.
 ///
-/// TODO:
-/// - [ ] Ensure correct types.
-/// - [ ] Support Option<T> merges.
-/// - [ ] Check for Options in merge.
-/// - [ ] Merge function for owned struct (consumes).
-/// - [ ] Merge function that clones fields.
-/// - [ ] soft_merge function that only override if Options are `Some`.
+///     The resulting code will still be correct though, as any type issues will be caught by the
+///     compiler anyway.
+/// - If people work with type aliases such as `type nice = Option<String>`, the `Option` detection
+///   no longer works and thereby the `merge_soft*` functions won't work as expected.
 pub(crate) fn generate_impl(
     mode: &Mode,
     src_ident: Ident,
@@ -76,16 +75,18 @@ pub(crate) fn generate_impl(
     // In the following, we'll generate all required functions for the `MergeInto` impl.
     // If any of the functions fails to be generated, we skip the impl for this struct.
     // The errors will be generated in the individual token generator functions.
-    match mode {
-        &Mode::Owned => owned::generate_impl_owned(src_ident, dest_path, similar_fields),
-        &Mode::Borrowed => borrowed::generate_impl_borrowed(src_ident, dest_path, similar_fields),
+    match *mode {
+        Mode::Owned => owned::impl_owned(src_ident, dest_path, similar_fields),
+        Mode::Borrowed => borrowed::impl_borrowed(src_ident, dest_path, similar_fields),
     }
 }
 
 /// Check whether two given [Type]s are of the same type.
 /// If they aren't, an error is added to the src_type and the function returns `false`.
+///
+/// This check is rather crude, as we simply compare the token streams.
+/// However, this is the only way for now, as there are no type infos at this stage.
 fn is_equal_type(src_type: &Type, dest_type: &Type) -> bool {
-    // This is a reather stupid way of comparing equality, but it has to do for now.
     if src_type.to_token_stream().to_string() != dest_type.to_token_stream().to_string() {
         return false;
     }
@@ -96,6 +97,7 @@ fn is_equal_type(src_type: &Type, dest_type: &Type) -> bool {
 /// Internal representation of parsed types
 ///
 /// We either expect fields to have a generic type `T` or `Option<T>`.
+#[allow(clippy::large_enum_variant)]
 enum FieldType {
     Normal(Type),
     Optional { inner: Type, outer: Type },
@@ -106,11 +108,16 @@ enum FieldType {
 ///
 /// This detected variant is represented via the [FieldType] enum.
 /// Invalid or unsupported types return the `FieldType::Invalid` variant.
+///
+/// Known limitations:
+///
+/// This doesn't work with type aliases. We literally check the tokens for `Option<...>`.
+/// If there's an optional type that doesn't look like this, we won't detect it.
 fn determine_field_type(ty: Type) -> FieldType {
     match ty.clone() {
         Type::Path(type_path) => {
             // The path is relative to `Self` and thereby non-optional
-            if !type_path.qself.is_none() {
+            if type_path.qself.is_some() {
                 return FieldType::Normal(ty);
             }
 
@@ -169,7 +176,7 @@ fn determine_field_type(ty: Type) -> FieldType {
                 ty,
                 "Found a non-path type. This isn't supported in struct-merge yet."
             );
-            return FieldType::Invalid;
+            FieldType::Invalid
         }
     }
 }
