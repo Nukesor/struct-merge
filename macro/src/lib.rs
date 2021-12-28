@@ -1,11 +1,12 @@
 #![feature(proc_macro_diagnostic)]
 
-use generate::generate_implementations;
+use generate::generate_impl;
 use module::get_struct_from_path;
 use path::{get_root_src_path, parse_input_paths};
 use proc_macro::TokenStream;
 use syn::{parse_macro_input, Expr, ItemStruct};
 
+/// Helper macro, which attaches an error to a given span.
 macro_rules! err {
     ($span:ident, $($text:expr),*) => {
         $span.span()
@@ -15,8 +16,13 @@ macro_rules! err {
     }
 }
 
-/// Takes a statement returning a Result and emits a compiler error on the given Span if an error
-/// occurred. Otherwise, return the value of the successful statement.
+/// Helper macro, which takes a result.
+/// Ok(T) => simply return the T
+/// Err(err) => Emits an compiler error on the given span with the provided error message.
+///             Also returns early with `None`.
+///             `None` is used throughout this crate as a gracefull failure.
+///             That way all code that can be created is being generated and the user sees all
+///             errors without the macro code panicking.
 macro_rules! ok_or_err_return {
     ($expr:expr, $span:ident, $($text:expr),*) => {
         match $expr {
@@ -34,7 +40,23 @@ mod module;
 mod path;
 
 #[proc_macro_attribute]
-pub fn struct_merge(args: TokenStream, mut struct_ast: TokenStream) -> TokenStream {
+pub fn struct_merge(args: TokenStream, struct_ast: TokenStream) -> TokenStream {
+    struct_merge_base(args, struct_ast, Mode::Owned)
+}
+
+#[proc_macro_attribute]
+pub fn struct_merge_ref(args: TokenStream, struct_ast: TokenStream) -> TokenStream {
+    struct_merge_base(args, struct_ast, Mode::Borrowed)
+}
+
+/// This enum is used to differentiate between owned and borrowed merge behavior.
+/// Depending on this, we need to generate another trait impl and slightly different code.
+enum Mode {
+    Owned,
+    Borrowed,
+}
+
+fn struct_merge_base(args: TokenStream, mut struct_ast: TokenStream, mode: Mode) -> TokenStream {
     let parsed_args = parse_macro_input!(args as Expr);
     // Check if we can find the src root path of this crate.
     // Return early if it doesn't exist.
@@ -52,17 +74,18 @@ pub fn struct_merge(args: TokenStream, mut struct_ast: TokenStream) -> TokenStre
     // Get the input paths from the given argument expressions.
     let paths = parse_input_paths(parsed_args);
 
-    let mut impls = Vec::new();
     // Go through all paths and process the respective struct.
+    let mut impls = Vec::new();
     for path in paths.clone() {
-        // Make sure we found the struct in that file.
+        // Make sure we found the struct at that path.
         let dest_struct = match get_struct_from_path(src_root_path.clone(), path.clone()) {
             Some(ast) => ast,
             None => continue,
         };
 
         // Generate the MergeStruct trait implementations.
-        match generate_implementations(
+        match generate_impl(
+            &mode,
             src_struct.ident.clone(),
             path,
             src_struct.clone(),

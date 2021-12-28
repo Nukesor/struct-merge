@@ -1,7 +1,7 @@
 mod base;
 mod tomerge;
 
-use struct_merge::{StructMerge, StructMergeInto};
+use struct_merge::{StructMerge, StructMergeRef};
 
 fn main() {
     let mut base = base::Base {
@@ -13,15 +13,15 @@ fn main() {
         normal: "test".to_string(),
         optional: Some("test".to_string()),
     };
-    same.merge_into(&mut base);
+    base.merge_ref(&same);
     assert_eq!(base.normal, "test".to_string());
     assert_eq!(base.optional, Some("test".to_string()));
 
-    let same = tomerge::Optional {
+    let optional = tomerge::Optional {
         normal: Some("test1".to_string()),
         optional: Some(Some("test1".to_string())),
     };
-    base.merge(&same);
+    base.merge_ref(&optional);
     assert_eq!(base.normal, "test1".to_string());
     assert_eq!(base.optional, Some("test1".to_string()));
 
@@ -29,7 +29,7 @@ fn main() {
         normal: "test2".to_string(),
         optional: Some(Some("test2".to_string())),
     };
-    base.merge_owned(same);
+    base.merge(same);
     assert_eq!(base.normal, "test2".to_string());
     assert_eq!(base.optional, Some("test2".to_string()));
 }
