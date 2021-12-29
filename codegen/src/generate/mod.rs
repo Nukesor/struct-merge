@@ -1,19 +1,19 @@
 use proc_macro2::TokenStream;
 use quote::ToTokens;
 use syn::spanned::Spanned;
-use syn::{ExprPath, Fields, GenericArgument, Ident, ItemStruct, PathArguments, Type};
+use syn::{Fields, GenericArgument, PathArguments, Type};
 
-use crate::Mode;
+use crate::{Mode, Parameters};
 
 macro_rules! equal_type_or_continue {
-    ($src_type:ident, $dest_type:ident, $type:expr, $correct_macro:expr) => {
-        if !is_equal_type(&$src_type, &$dest_type) {
+    ($src_type:ident, $target_type:ident, $type:expr, $correct_macro:expr) => {
+        if !is_equal_type(&$src_type, &$target_type) {
             err!(
                 $src_type,
                 "{}Type '{} cannot be merged into field of type '{}'.",
                 $type,
                 $src_type.to_token_stream(),
-                $dest_type.to_token_stream()
+                $target_type.to_token_stream()
             )
         } else {
             $correct_macro
@@ -24,12 +24,12 @@ macro_rules! equal_type_or_continue {
 mod borrowed;
 mod owned;
 
-/// Return a Tokenstream that contains all implementations to merge `src` into the `dest`
+/// Return a Tokenstream that contains all implementations to merge `src` into the `target`
 /// struct.
 ///
 /// Known Limitations:
 /// - Error, when using different generic aliases that have same type.
-/// - Visibility of the `dest` struct isn't taken into account.
+/// - Visibility of the `target` struct isn't taken into account.
 ///     This will get better when module resolution is done properly.
 /// - Type equality cannot be properly ensured at this stage.
 ///     Right now, we only check if the given tokens for a type are the same.
@@ -39,27 +39,21 @@ mod owned;
 ///     compiler anyway.
 /// - If people work with type aliases such as `type nice = Option<String>`, the `Option` detection
 ///   no longer works and thereby the `merge_soft*` functions won't work as expected.
-pub(crate) fn generate_impl(
-    mode: &Mode,
-    src_ident: Ident,
-    dest_path: ExprPath,
-    src: ItemStruct,
-    dest: ItemStruct,
-) -> Result<TokenStream, TokenStream> {
-    let dest_fields = match dest.fields {
+pub(crate) fn generate_impl(mode: &Mode, params: Parameters) -> Result<TokenStream, TokenStream> {
+    let target_fields = match params.target_struct.fields.clone() {
         Fields::Named(fields) => fields,
         _ => {
             return Err(err!(
-                dest,
+                params.target_struct,
                 "struct_merge only works on structs with named fields."
             ));
         }
     };
-    let src_fields = match src.fields {
+    let src_fields = match params.src_struct.fields.clone() {
         Fields::Named(fields) => fields,
         _ => {
             return Err(err!(
-                src,
+                params.target_struct,
                 "struct_merge only works on structs with named fields."
             ));
         }
@@ -67,9 +61,9 @@ pub(crate) fn generate_impl(
 
     let mut similar_fields = Vec::new();
     for src_field in src_fields.named {
-        for dest_field in dest_fields.named.clone() {
-            if src_field.ident == dest_field.ident {
-                similar_fields.push((src_field.clone(), dest_field));
+        for target_field in target_fields.named.clone() {
+            if src_field.ident == target_field.ident {
+                similar_fields.push((src_field.clone(), target_field));
             }
         }
     }
@@ -78,12 +72,8 @@ pub(crate) fn generate_impl(
     // If any of the functions fails to be generated, we skip the impl for this struct.
     // The errors will be generated in the individual token generator functions.
     match *mode {
-        Mode::Owned => Ok(owned::impl_owned(src_ident, dest_path, similar_fields)),
-        Mode::Borrowed => Ok(borrowed::impl_borrowed(
-            src_ident,
-            dest_path,
-            similar_fields,
-        )),
+        Mode::Owned => Ok(owned::impl_owned(&params, similar_fields)),
+        Mode::Borrowed => Ok(borrowed::impl_borrowed(&params, similar_fields)),
     }
 }
 
@@ -92,8 +82,8 @@ pub(crate) fn generate_impl(
 ///
 /// This check is rather crude, as we simply compare the token streams.
 /// However, this is the only way for now, as there are no type infos at this stage.
-fn is_equal_type(src_type: &Type, dest_type: &Type) -> bool {
-    if src_type.to_token_stream().to_string() != dest_type.to_token_stream().to_string() {
+fn is_equal_type(src_type: &Type, target_type: &Type) -> bool {
+    if src_type.to_token_stream().to_string() != target_type.to_token_stream().to_string() {
         return false;
     }
 

@@ -40,8 +40,6 @@ pub fn parse_input_paths(args: Expr) -> Vec<ExprPath> {
 /// Get the root path of the crate that's currently using this proc macro.
 /// This is done via the `CARGO_MANIFEST_DIR` variable, that's always supplied by cargo and
 /// represents the directory containing the `Cargo.toml` for the current crate.
-///
-/// TODO: For now we always expect any files to be located in the `src` directory.
 pub fn get_root_src_path(parsed_args: &Expr) -> Option<PathBuf> {
     match std::env::var("CARGO_MANIFEST_DIR") {
         Err(error) => {

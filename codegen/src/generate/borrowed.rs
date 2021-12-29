@@ -1,25 +1,23 @@
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens};
-use syn::{ExprPath, Field, Ident};
+use syn::Field;
 
 use super::*;
 
 /// Generate the implementation of [struct_merge::StructMergeRef] for given structs.
-pub fn impl_borrowed(
-    src_ident: Ident,
-    dest_path: ExprPath,
-    fields: Vec<(Field, Field)>,
-) -> TokenStream {
+pub(crate) fn impl_borrowed(params: &Parameters, fields: Vec<(Field, Field)>) -> TokenStream {
     let mut functions_tokens = TokenStream::new();
 
-    let stream = merge_ref(src_ident.clone(), fields.clone());
+    let stream = merge_ref(params, fields.clone());
     functions_tokens.extend(vec![stream]);
 
-    let stream = merge_ref_soft(src_ident.clone(), fields);
+    let stream = merge_ref_soft(params, fields);
     functions_tokens.extend(vec![stream]);
 
+    let src_ident = &params.src_struct.ident;
+    let target_path = &params.target_path;
     quote! {
-        impl struct_merge::StructMergeRef<#src_ident> for #dest_path {
+        impl struct_merge::StructMergeIntoRef<#target_path> for #src_ident {
             #functions_tokens
         }
     }
@@ -28,25 +26,25 @@ pub fn impl_borrowed(
 /// Generate the [struct_merge::StructMergeRef::merge_ref] function for given structs.
 ///
 /// All fields must implement `Clone`.
-fn merge_ref(src_ident: Ident, fields: Vec<(Field, Field)>) -> TokenStream {
+fn merge_ref(params: &Parameters, fields: Vec<(Field, Field)>) -> TokenStream {
     let mut merge_code = TokenStream::new();
-    for (src_field, dest_field) in fields {
-        let src_ident = src_field.ident;
-        let dest_ident = dest_field.ident;
+    for (src_field, target_field) in fields {
+        let src_field_ident = src_field.ident;
+        let target_field_ident = target_field.ident;
 
         // Find out, whether the fields are optional or not.
         let src_field_type = determine_field_type(src_field.ty);
-        let dest_field_type = determine_field_type(dest_field.ty);
+        let target_field_type = determine_field_type(target_field.ty);
 
-        let snippet = match (src_field_type, dest_field_type) {
+        let snippet = match (src_field_type, target_field_type) {
             // Both fields have the same type
-            (FieldType::Normal(src_type), FieldType::Normal(dest_type)) => {
+            (FieldType::Normal(src_type), FieldType::Normal(target_type)) => {
                 equal_type_or_continue!(
                     src_type,
-                    dest_type,
+                    target_type,
                     "",
                     quote! {
-                        self.#dest_ident = src.#src_ident.clone();
+                        target.#target_field_ident = self.#src_field_ident.clone();
                     }
                 )
             }
@@ -55,32 +53,32 @@ fn merge_ref(src_ident: Ident, fields: Vec<(Field, Field)>) -> TokenStream {
                 FieldType::Optional {
                     inner: src_type, ..
                 },
-                FieldType::Normal(dest_type),
+                FieldType::Normal(target_type),
             ) => {
                 equal_type_or_continue!(
                     src_type,
-                    dest_type,
+                    target_type,
                     "Inner ",
                     quote! {
-                        if let Some(value) = src.#src_ident.as_ref() {
-                            self.#dest_ident = value.clone();
+                        if let Some(value) = self.#src_field_ident.as_ref() {
+                            target.#target_field_ident = value.clone();
                         }
                     }
                 )
             }
-            // The dest is optional and needs to be wrapped in `Some(T)` to be merged.
+            // The target is optional and needs to be wrapped in `Some(T)` to be merged.
             (
                 FieldType::Normal(src_type),
                 FieldType::Optional {
-                    inner: dest_type, ..
+                    inner: target_type, ..
                 },
             ) => {
                 equal_type_or_continue!(
                     src_type,
-                    dest_type,
+                    target_type,
                     "",
                     quote! {
-                        self.#dest_ident = Some(src.#src_ident.clone());
+                        self.#target_field_ident = Some(src.#src_field_ident.clone());
                     }
                 )
             }
@@ -94,30 +92,30 @@ fn merge_ref(src_ident: Ident, fields: Vec<(Field, Field)>) -> TokenStream {
                     outer: outer_src_type,
                 },
                 FieldType::Optional {
-                    inner: inner_dest_type,
-                    outer: outer_dest_type,
+                    inner: inner_target_type,
+                    outer: outer_target_type,
                 },
             ) => {
                 // Handling the (Option<T>, Option<T>) case
-                if is_equal_type(&inner_src_type, &inner_dest_type) {
+                if is_equal_type(&inner_src_type, &inner_target_type) {
                     quote! {
-                        self.#dest_ident = src.#src_ident.clone();
+                        target.#target_field_ident = self.#src_field_ident.clone();
                     }
                 // Handling the (Option<Option<<T>>, Option<T>) case
-                } else if is_equal_type(&inner_src_type, &outer_dest_type) {
+                } else if is_equal_type(&inner_src_type, &outer_target_type) {
                     quote! {
-                        if let Some(value) = src.#src_ident.as_ref() {
-                            self.#dest_ident = value.clone();
+                        if let Some(value) = self.#src_field_ident.as_ref() {
+                            target.#target_field_ident = value.clone();
                         }
                     }
                 // Handling the (Option<<T>, Option<Option<T>)> case
                 } else {
                     equal_type_or_continue!(
                         outer_src_type,
-                        inner_dest_type,
+                        inner_target_type,
                         "",
                         quote! {
-                            self.#dest_ident = Some(src.#src_ident.clone());
+                            target.#target_field_ident = Some(self.#src_field_ident.clone());
                         }
                     )
                 }
@@ -131,8 +129,9 @@ fn merge_ref(src_ident: Ident, fields: Vec<(Field, Field)>) -> TokenStream {
 
     let merge_code = merge_code.to_token_stream();
 
+    let target_path = &params.target_path;
     quote! {
-        fn merge_ref(&mut self, src: &#src_ident) {
+        fn merge_into_ref(&self, target: &mut #target_path) {
             #merge_code
         }
     }
@@ -141,34 +140,34 @@ fn merge_ref(src_ident: Ident, fields: Vec<(Field, Field)>) -> TokenStream {
 /// Generate the [struct_merge::StructMergeRef::merge_ref_soft] function for given structs.
 ///
 /// All fields must implement `Clone`.
-fn merge_ref_soft(src_ident: Ident, fields: Vec<(Field, Field)>) -> TokenStream {
+fn merge_ref_soft(params: &Parameters, fields: Vec<(Field, Field)>) -> TokenStream {
     let mut merge_code = TokenStream::new();
-    for (src_field, dest_field) in fields {
-        let src_ident = src_field.ident;
-        let dest_ident = dest_field.ident;
+    for (src_field, target_field) in fields {
+        let src_field_ident = src_field.ident;
+        let target_field_ident = target_field.ident;
 
         // Find out, whether the fields are optional or not.
         let src_field_type = determine_field_type(src_field.ty);
-        let dest_field_type = determine_field_type(dest_field.ty);
+        let target_field_type = determine_field_type(target_field.ty);
 
-        let snippet = match (src_field_type, dest_field_type) {
-            // Soft merge only applies if the dest field is `Optional`.
+        let snippet = match (src_field_type, target_field_type) {
+            // Soft merge only applies if the target field is `Optional`.
             (FieldType::Normal(_), FieldType::Normal(_))
             | (FieldType::Optional { .. }, FieldType::Normal(_)) => continue,
-            // The dest is optional and needs to be wrapped in `Some(T)` to be merged.
+            // The target is optional and needs to be wrapped in `Some(T)` to be merged.
             (
                 FieldType::Normal(src_type),
                 FieldType::Optional {
-                    inner: dest_type, ..
+                    inner: target_type, ..
                 },
             ) => {
                 equal_type_or_continue!(
                     src_type,
-                    dest_type,
+                    target_type,
                     "",
                     quote! {
-                        if self.#dest_ident.is_none() {
-                            self.#dest_ident = Some(src.#src_ident.clone());
+                        if target.#target_field_ident.is_none() {
+                            target.#target_field_ident = Some(self.#src_field_ident.clone());
                         }
                     }
                 )
@@ -183,23 +182,23 @@ fn merge_ref_soft(src_ident: Ident, fields: Vec<(Field, Field)>) -> TokenStream 
                     outer: outer_src_type,
                 },
                 FieldType::Optional {
-                    inner: inner_dest_type,
-                    outer: outer_dest_type,
+                    inner: inner_target_type,
+                    outer: outer_target_type,
                 },
             ) => {
                 // Handling the (Option<T>, Option<T>) case
-                if is_equal_type(&inner_src_type, &inner_dest_type) {
+                if is_equal_type(&inner_src_type, &inner_target_type) {
                     quote! {
-                        if self.#dest_ident.is_none() {
-                            self.#dest_ident = src.#src_ident.clone();
+                        if target.#target_field_ident.is_none() {
+                            target.#target_field_ident = self.#src_field_ident.clone();
                         }
                     }
                 // Handling the (Option<Option<<T>>, Option<T>) case
-                } else if is_equal_type(&inner_src_type, &outer_dest_type) {
+                } else if is_equal_type(&inner_src_type, &outer_target_type) {
                     quote! {
-                        if let Some(value) = src.#src_ident.as_ref() {
-                            if self.#dest_ident.is_none() {
-                                self.#dest_ident = value.clone();
+                        if let Some(value) = self.#src_field_ident.as_ref() {
+                            if target.#target_field_ident.is_none() {
+                                target.#target_field_ident = value.clone();
                             }
                         }
                     }
@@ -207,11 +206,11 @@ fn merge_ref_soft(src_ident: Ident, fields: Vec<(Field, Field)>) -> TokenStream 
                 } else {
                     equal_type_or_continue!(
                         outer_src_type,
-                        inner_dest_type,
+                        inner_target_type,
                         "",
                         quote! {
-                            if self.#dest_ident.is_none() {
-                                self.#dest_ident = Some(src.#src_ident.clone());
+                            if target.#target_field_ident.is_none() {
+                                target.#target_field_ident = Some(self.#src_field_ident.clone());
                             }
                         }
                     )
@@ -226,8 +225,9 @@ fn merge_ref_soft(src_ident: Ident, fields: Vec<(Field, Field)>) -> TokenStream 
 
     let merge_code = merge_code.to_token_stream();
 
+    let target_path = &params.target_path;
     quote! {
-        fn merge_ref_soft(&mut self, src: &#src_ident) {
+        fn merge_into_ref_soft(&self, target: &mut #target_path) {
             #merge_code
         }
     }

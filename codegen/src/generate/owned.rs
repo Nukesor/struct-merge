@@ -1,32 +1,30 @@
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens};
-use syn::{ExprPath, Field, Ident};
+use syn::Field;
 
 use super::*;
 
 /// Generate the implementation of [struct_merge::StructMerge] for given structs.
-pub fn impl_owned(
-    src_ident: Ident,
-    dest_path: ExprPath,
-    fields: Vec<(Field, Field)>,
-) -> TokenStream {
+pub(crate) fn impl_owned(params: &Parameters, fields: Vec<(Field, Field)>) -> TokenStream {
     let mut functions_tokens = TokenStream::new();
 
-    let stream = merge(src_ident.clone(), fields.clone());
+    let stream = merge(params, fields.clone());
     functions_tokens.extend(vec![stream]);
 
-    let stream = merge_soft(src_ident.clone(), fields);
+    let stream = merge_soft(params, fields);
     functions_tokens.extend(vec![stream]);
 
+    let src_ident = &params.src_struct.ident;
+    let target_path = &params.target_path;
     quote! {
-        impl struct_merge::StructMerge<#src_ident> for #dest_path {
+        impl struct_merge::StructMergeInto<#target_path> for #src_ident {
             #functions_tokens
         }
     }
 }
 
 /// Generate the [struct_merge::StructMerge::merge] function for the given structs.
-fn merge(src_ident: Ident, fields: Vec<(Field, Field)>) -> TokenStream {
+fn merge(params: &Parameters, fields: Vec<(Field, Field)>) -> TokenStream {
     let mut merge_code = TokenStream::new();
     for (src_field, dest_field) in fields {
         let src_ident = src_field.ident;
@@ -44,7 +42,7 @@ fn merge(src_ident: Ident, fields: Vec<(Field, Field)>) -> TokenStream {
                     dest_type,
                     "",
                     quote! {
-                        self.#dest_ident = src.#src_ident;
+                        dest.#dest_ident = self.#src_ident;
                     }
                 )
             }
@@ -60,8 +58,8 @@ fn merge(src_ident: Ident, fields: Vec<(Field, Field)>) -> TokenStream {
                     dest_type,
                     "Inner",
                     quote! {
-                        if let Some(value) = src.#src_ident {
-                            self.#dest_ident = value;
+                        if let Some(value) = self.#src_ident {
+                            dest.#dest_ident = value;
                         }
                     }
                 )
@@ -78,7 +76,7 @@ fn merge(src_ident: Ident, fields: Vec<(Field, Field)>) -> TokenStream {
                     dest_type,
                     "",
                     quote! {
-                        self.#dest_ident = Some(src.#src_ident);
+                        dest.#dest_ident = Some(self.#src_ident);
                     }
                 )
             }
@@ -99,13 +97,13 @@ fn merge(src_ident: Ident, fields: Vec<(Field, Field)>) -> TokenStream {
                 // Handling the (Option<T>, Option<T>) case
                 if is_equal_type(&inner_src_type, &inner_dest_type) {
                     quote! {
-                        self.#dest_ident = src.#src_ident;
+                        dest.#dest_ident = self.#src_ident;
                     }
                 // Handling the (Option<Option<<T>>, Option<T>) case
                 } else if is_equal_type(&inner_src_type, &outer_dest_type) {
                     quote! {
-                        if let Some(value) = src.#src_ident {
-                            self.#dest_ident = value;
+                        if let Some(value) = self.#src_ident {
+                            dest.#dest_ident = value;
                         }
                     }
                 // Handling the (Option<<T>, Option<Option<T>)> case
@@ -115,7 +113,7 @@ fn merge(src_ident: Ident, fields: Vec<(Field, Field)>) -> TokenStream {
                         inner_dest_type,
                         "",
                         quote! {
-                            self.#dest_ident = Some(src.#src_ident);
+                            dest.#dest_ident = Some(self.#src_ident);
                         }
                     )
                 }
@@ -129,15 +127,16 @@ fn merge(src_ident: Ident, fields: Vec<(Field, Field)>) -> TokenStream {
 
     let merge_code = merge_code.to_token_stream();
 
+    let target_path = &params.target_path;
     quote! {
-        fn merge(&mut self, src: #src_ident) {
+        fn merge_into(self, dest: &mut #target_path) {
             #merge_code
         }
     }
 }
 
 /// Generate the [struct_merge::StructMerge::merge_soft] function for the given structs.
-fn merge_soft(src_ident: Ident, fields: Vec<(Field, Field)>) -> TokenStream {
+fn merge_soft(params: &Parameters, fields: Vec<(Field, Field)>) -> TokenStream {
     let mut merge_code = TokenStream::new();
     for (src_field, dest_field) in fields {
         let src_ident = src_field.ident;
@@ -163,8 +162,8 @@ fn merge_soft(src_ident: Ident, fields: Vec<(Field, Field)>) -> TokenStream {
                     dest_type,
                     "",
                     quote! {
-                        if self.#dest_ident.is_none() {
-                            self.#dest_ident = Some(src.#src_ident);
+                        if dest.#dest_ident.is_none() {
+                            dest.#dest_ident = Some(self.#src_ident);
                         }
                     }
                 )
@@ -186,16 +185,16 @@ fn merge_soft(src_ident: Ident, fields: Vec<(Field, Field)>) -> TokenStream {
                 // Handling the (Option<T>, Option<T>) case
                 if is_equal_type(&inner_src_type, &inner_dest_type) {
                     quote! {
-                        if self.#dest_ident.is_none() {
-                            self.#dest_ident = src.#src_ident;
+                        if dest.#dest_ident.is_none() {
+                            dest.#dest_ident = self.#src_ident;
                         }
                     }
                 // Handling the (Option<Option<<T>>, Option<T>) case
                 } else if is_equal_type(&inner_src_type, &outer_dest_type) {
                     quote! {
-                        if let Some(value) = src.#src_ident {
-                            if self.#dest_ident.is_none() {
-                                self.#dest_ident = value;
+                        if let Some(value) = self.#src_ident {
+                            if dest.#dest_ident.is_none() {
+                                dest.#dest_ident = value;
                             }
                         }
                     }
@@ -206,8 +205,8 @@ fn merge_soft(src_ident: Ident, fields: Vec<(Field, Field)>) -> TokenStream {
                         inner_dest_type,
                         "",
                         quote! {
-                            if self.#dest_ident.is_none() {
-                                self.#dest_ident = Some(src.#src_ident);
+                            if dest.#dest_ident.is_none() {
+                                dest.#dest_ident = Some(self.#src_ident);
                             }
                         }
                     )
@@ -222,8 +221,9 @@ fn merge_soft(src_ident: Ident, fields: Vec<(Field, Field)>) -> TokenStream {
 
     let merge_code = merge_code.to_token_stream();
 
+    let target_path = &params.target_path;
     quote! {
-        fn merge_soft(&mut self, src: #src_ident) {
+        fn merge_into_soft(self, dest: &mut #target_path) {
             #merge_code
         }
     }

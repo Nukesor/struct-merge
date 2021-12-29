@@ -2,11 +2,11 @@ use generate::generate_impl;
 use module::get_struct_from_path;
 use path::{get_root_src_path, parse_input_paths};
 use proc_macro::TokenStream;
-use syn::{parse_macro_input, Expr, ItemStruct};
+use syn::{parse_macro_input, Expr, ExprPath, ItemStruct};
 
 /// Helper macro, which attaches an error to a given span.
 macro_rules! err {
-    ($span:ident, $($text:expr),*) => {
+    ($span:expr, $($text:expr),*) => {
         {
             let message = format!($($text,)*);
             let span = $span.span();
@@ -50,33 +50,33 @@ mod generate;
 mod module;
 mod path;
 
-/// Implement the `struct_merge::StructMerge<T>` trait for all given targets.
+/// Implement the `struct_merge::StructMerge<S>` trait for all given targets.
+///
+/// Eiter a single struct or a list of structs can be provided.
+/// `StructMerge<T>` will then be implemented on each given target struct.
+///
+/// Examples:
+/// - `#[struct_merge(crate::structs::Target)]`
+/// - `#[struct_merge([crate::structs::Target, crate:structs::OtherTarget])]`
 ///
 /// The targets struct paths have to be
 /// - absolute
 /// - relative to the current crate
 /// - contained in this crate
 ///
-/// Eiter a single struct or a list of structs can be provided.
-/// `StructMerge<T>` will then be implemented on each given target struct.
-///
-/// Examples:
-/// - `#[struct_merge(crate::structs::Base)]`
-/// - `#[struct_merge([crate::structs::Base, crate:structs::Other])]`
-///
 /// `struct.rs`
 /// ```ignore
 /// use struct_merge::struct_merge;
 ///
-/// pub struct Base {
+/// pub struct Target {
 ///     pub test: String,
 /// }
 ///
-/// pub struct Other {
+/// pub struct OtherTarget {
 ///     pub test: String,
 /// }
 ///
-/// #[struct_merge([crate::structs::Base, crate:structs::Other])]
+/// #[struct_merge([crate::structs::Target, crate:structs::OtherTarget])]
 /// pub struct Test {
 ///     pub test: String,
 /// }
@@ -86,33 +86,35 @@ pub fn struct_merge(args: TokenStream, struct_ast: TokenStream) -> TokenStream {
     struct_merge_base(args, struct_ast, Mode::Owned)
 }
 
-/// Implement the `struct_merge::StructMergeRef<T>` trait for all given targets.
+/// Implement the `struct_merge::StructMergeRef<S>` trait for all given targets.
+///
+/// All fields to be merged must implement the [std::clone::Clone] trait.
+///
+/// Eiter a single struct or a list of structs can be provided.
+/// `StructMergeRef<T>` will then be implemented on each given target struct.
+///
+/// Examples:
+/// - `#[struct_merge_ref(crate::structs::Target)]`
+/// - `#[struct_merge_ref([crate::structs::Target, crate:structs::OtherTarget])]`
 ///
 /// The targets struct paths have to be
 /// - absolute
 /// - relative to the current crate
 /// - contained in this crate
 ///
-/// Eiter a single struct or a list of structs can be provided.
-/// `StructMergeRef<T>` will then be implemented on each given target struct.
-///
-/// Examples:
-/// - `#[struct_merge_ref(crate::structs::Base)]`
-/// - `#[struct_merge_ref([crate::structs::Base, crate:structs::Other])]`
-///
 /// `struct.rs`
 /// ```ignore
 /// use struct_merge::struct_merge_ref;
 ///
-/// pub struct Base {
+/// pub struct Target {
 ///     pub test: String,
 /// }
 ///
-/// pub struct Other {
+/// pub struct OtherTarget {
 ///     pub test: String,
 /// }
 ///
-/// #[struct_merge_ref([crate::structs::Base, crate:structs::Other])]
+/// #[struct_merge_ref([crate::structs::Target, crate:structs::OtherTarget])]
 /// pub struct Test {
 ///     pub test: String,
 /// }
@@ -127,6 +129,12 @@ pub fn struct_merge_ref(args: TokenStream, struct_ast: TokenStream) -> TokenStre
 enum Mode {
     Owned,
     Borrowed,
+}
+
+pub(crate) struct Parameters {
+    pub src_struct: ItemStruct,
+    pub target_path: ExprPath,
+    pub target_struct: ItemStruct,
 }
 
 fn struct_merge_base(args: TokenStream, mut struct_ast: TokenStream, mode: Mode) -> TokenStream {
@@ -149,9 +157,9 @@ fn struct_merge_base(args: TokenStream, mut struct_ast: TokenStream, mode: Mode)
 
     // Go through all paths and process the respective struct.
     let mut impls = Vec::new();
-    for path in paths {
+    for target_path in paths {
         // Make sure we found the struct at that path.
-        let dest_struct = match get_struct_from_path(src_root_path.clone(), path.clone()) {
+        let target_struct = match get_struct_from_path(src_root_path.clone(), target_path.clone()) {
             Ok(ast) => ast,
             Err(error) => {
                 impls.push(error);
@@ -159,14 +167,14 @@ fn struct_merge_base(args: TokenStream, mut struct_ast: TokenStream, mode: Mode)
             }
         };
 
+        let params = Parameters {
+            src_struct: src_struct.clone(),
+            target_path,
+            target_struct,
+        };
+
         // Generate the MergeStruct trait implementations.
-        match generate_impl(
-            &mode,
-            src_struct.ident.clone(),
-            path,
-            src_struct.clone(),
-            dest_struct,
-        ) {
+        match generate_impl(&mode, params) {
             Ok(ast) => impls.push(ast),
             Err(error) => {
                 impls.push(error);

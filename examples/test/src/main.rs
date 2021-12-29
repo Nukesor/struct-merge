@@ -1,6 +1,6 @@
 mod structs;
 
-use struct_merge::{StructMerge, StructMergeRef};
+use struct_merge::prelude::*;
 
 use crate::structs::*;
 

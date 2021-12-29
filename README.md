@@ -7,7 +7,7 @@
 
 Generate code for merging various structs.
 
-This crate provides two proc-macros to generate two different, but very similary traits:
+This crate provides two proc-macros to generate two very similary traits:
 
 ```rust,ignore
 /// Merge another struct into Self whilst consuming it.
@@ -37,23 +37,22 @@ Please read the **known caveats** section before using this crate!
 
 This example shows a simple usage of the `struct_merge` macro.
 
-`structs.rs`
+`structs.rs`: The structs that will be used in this example.
 ```rust,ignore
-/// This is the definition of the structs that will be used.
 use struct_merge::struct_merge;
 
-/// The base struct we'll merge into.
-pub struct Base {
+/// The target struct we'll merge into.
+pub struct Target {
     pub normal: String,
     pub optional: Option<String>,
-    /// This field won't be touched, as the macro cannot find a
+    /// This field won't be touched as the macro cannot find a
     /// respective `ignored` field in the `Mixed` struct.
     pub ignored: Option<String>,
 }
 
 /// A struct with both an identical and an optional field type.
-/// Note that the path to `Base` must always a fully qualifying path.
-#[struct_merge(crate::structs::Base)]
+/// Note that the path to `Target` must always a fully qualifying path.
+#[struct_merge(crate::structs::Target)]
 pub struct Mixed {
     pub normal: String,
     pub optional: Option<Option<String>>,
@@ -62,29 +61,32 @@ pub struct Mixed {
 
 `lib.rs`
 ```rust,ignore
-use struct_merge::StructMerge;
-mod structs;
-use structs::{Base, Mixed};
+use struct_merge::prelude::*;
 
-/// Test the normal [StructMerge::merge] and [StructMergeRef::merge_soft] functions.
+mod structs;
+use structs::{Target, Mixed};
+
 fn main() {
-    // The base struct that's going to be merged into.
-    let mut base = Base {
-        normal: "base".to_string(),
-        optional: Some("base".to_string()),
-        ignored: "base".to_string(),
+    let mut target = Target {
+        normal: "target".to_string(),
+        optional: Some("target".to_string()),
+        ignored: "target".to_string(),
     };
 
-    // Merge the `Mixed` struct into base.
     let mixed = Mixed {
+        /// Has the same type as Target::normal
         normal: "mixed".to_string(),
+        /// Wraps Target::optional in an Option
         optional: Some(Some("mixed".to_string())),
     };
 
-    base.merge(mixed);
-    assert_eq!(base.normal, "mixed".to_string());
-    assert_eq!(base.optional, Some("mixed".to_string()));
-    assert_eq!(base.ignored, "base".to_string());
+    // Merge the `Mixed` struct into target.
+    target.merge(mixed);
+    // You can also call this:
+    // mixed.merge_into(target);
+    assert_eq!(target.normal, "mixed".to_string());
+    assert_eq!(target.optional, Some("mixed".to_string()));
+    assert_eq!(target.ignored, "target".to_string());
 }
 ```
 
@@ -92,17 +94,18 @@ fn main() {
 
 ### Module/Type Resolution
 
-There is no easy way to do path or type resolution during the procedural macro stage, as everything we have are some tokens. \
-That's why this crate might not work with your project's structure.
-However, as we're creating safe and valid Rust code, the compiler will thrown an error if any problems arise.
+There is no easy way to do path or type resolution during the procedural macro stage. \
+For this reason, this crate might not work with your project's structure.
+
+However, as we're creating safe and valid Rust code the compiler will thrown an error if any problems arise.
 
 When using the normal `merge` functions, the worst thing that might happen is that this crate won't compile.
 
-**However**, when using obscured types such as type aliases, the `merge_soft` functions won't detect `Option`s properly and merge values even though they might already be `Some`!
+**However**, when using obscured types such as type aliases, the `merge_soft` functions won't detect `Option`s properly and might merge values even though they're alreay `Some`!
 
 #### Not yet solved problems
 
-These are problems that can probably be solved, but they're non-trivial.
+These are problems that can probably be solved but they're non-trivial.
 
 - [ ] Struct located at root of crate. E.g. `lib.rs`.
 - [ ] Struct is located in integration tests.
@@ -110,9 +113,9 @@ These are problems that can probably be solved, but they're non-trivial.
 - [ ] The source root dir isn't `src`.
       We would have to check the environment and possibly parse the `Cargo.toml`.
 - [ ] Different generic aliases that use different tokens but have the same type.
-        E.g.`Box<dyn T>` and `Box<dyn S>`, but both `S` and `T` have the `Clone` trait bound.
+        E.g.`Box<dyn T>` and `Box<dyn S>` but both `S` and `T` have the `Clone` trait bound.
 - [ ] Non-public structs. I.e. structs that aren't fully internally visible.
-    This will lead to an compiler-error, but isn't cought while running this macro.
+    This will lead to an compiler-error but isn't cought while running this macro.
     This might be infeasible?
 
 #### Unsolvable problems
