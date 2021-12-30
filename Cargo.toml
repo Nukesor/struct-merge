@@ -14,7 +14,7 @@ edition = "2021"
 maintenance = { status="actively-developed" }
 
 [dependencies]
-struct-merge-codegen = { path="codegen" }
+struct-merge-codegen = { version="0.1", path="codegen" }
 
 [workspace]
 members = ["codegen"]
