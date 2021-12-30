@@ -7,10 +7,12 @@
 
 Generate code for merging various structs.
 
-This crate provides two proc-macros to generate two very similary traits:
+This crate provides two proc-macros to generate two very similary traits.
 
 ```rust,ignore
 /// Merge another struct into Self whilst consuming it.
+/// 
+/// The other trait is named `StructMergeRef` and merges other structs by reference.
 pub trait StructMerge<Src> {
     /// Merge the given struct into self.
     fn merge(&mut self, src: Src);
@@ -19,19 +21,10 @@ pub trait StructMerge<Src> {
     /// value of the field is `None`.
     fn merge_soft(&mut self, src: Src);
 }
-
-/// Merge another borrowed struct into Self.
-/// All fields to be merged have to implement [Clone].
-pub trait StructMergeRef<Src> {
-    /// The same as StructMerge::merge.
-    fn merge_ref(&mut self, src: &Src);
-
-    /// Same behavior as StructMerge::merge_soft.
-    fn merge_ref_soft(&mut self, src: &Src);
-}
 ```
 
 Please read the **known caveats** section before using this crate!
+
 
 ## Example
 
@@ -89,6 +82,103 @@ fn main() {
     assert_eq!(target.ignored, "target".to_string());
 }
 ```
+
+
+## Merge Behavior
+
+The following will explain the merge behavior of a single field on the target struct.
+The name of the target field is `test`.
+
+### `merge` and `merge_ref`
+
+#### Same Type
+
+```rust
+struct Src {
+    test: T
+}
+struct Target {
+    test: T
+}
+```
+
+This will simply merge `src.test` into `target.test`: \
+`target.test = src.test`
+
+#### Target is Optional
+
+```rust
+struct Src {
+    test: T
+}
+struct Target {
+    test: Option<T>
+}
+```
+
+This will wrap `src.test` into an `Option` and merge it into `target.test`: \
+`target.test = Some(src.test);`
+
+#### Source is Optional
+
+```rust
+struct Src {
+    test: Option<T>
+}
+struct Target {
+    test: T
+}
+```
+
+This will only merge `src.test` into `target.test` if `src.test` is `Some`: \
+```rust
+if let Some(value) = src.test {
+    target.test = value;
+}
+```
+
+### `merge_soft` and `merge_ref_soft`
+
+#### `target.test` is not Optional
+
+As long as a target field is not optional it won't be touched!
+
+#### Target is Optional
+
+```rust
+struct Src {
+    test: T
+}
+struct Target {
+    test: Option<T>
+}
+```
+
+This will wrap `src.test` into an `Option` and merge it into `target.test` but only if `target.test` is `None`: \
+```rust
+if target.test.is_none() {
+    target.test = Some(src.test);
+}
+```
+
+#### Both are Optional
+
+```rust
+struct Src {
+    test: Option<T>
+}
+struct Target {
+    test: Option<T>
+}
+```
+
+This will only merge `src.test` into `target.test` if `target.test` is `None`: \
+```rust
+if target.test.is_none() {
+    target.test = src.test;
+}
+```
+
 
 ## Known caveats
 
