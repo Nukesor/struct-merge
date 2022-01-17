@@ -7,7 +7,7 @@
 
 Generate code for merging various structs.
 
-This crate provides two proc-macros to generate two very similary traits.
+This crate provides two proc-macros to generate two very similar traits.
 
 ```rust,ignore
 /// Merge another struct into Self whilst consuming it.
@@ -191,7 +191,7 @@ However, as we're creating safe and valid Rust code the compiler will thrown an 
 
 When using the normal `merge` functions, the worst thing that might happen is that this crate won't compile.
 
-**However**, when using obscured types such as type aliases, the `merge_soft` functions won't detect `Option`s properly and might merge values even though they're alreay `Some`!
+**However**, when using obscured types such as type aliases, the `merge_soft` functions won't detect `Option`s properly and might merge values even though they're already `Some`!
 
 #### Not yet solved problems
 
