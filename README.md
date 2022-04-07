@@ -5,6 +5,15 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Downloads](https://img.shields.io/github/downloads/nukesor/struct-merge/total.svg)](https://github.com/nukesor/struct-merge/releases)
 
+
+## !!! Deprecated !!!
+
+This project is superseded by [inter-struct](https://github.com/Nukesor/inter-struct).
+
+Consider switching to that library, as this library won't get any updates.
+
+## !!! Deprecated !!!
+
 Generate code for merging various structs.
 
 This crate provides two proc-macros to generate two very similar traits.

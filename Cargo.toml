@@ -1,7 +1,7 @@
 [package]
 name = "struct-merge"
 description = "Automatically generated code for various structs merge-strategies."
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Arne Beer <contact@arne.beer>"]
 homepage = "https://github.com/nukesor/struct-merge"
 repository = "https://github.com/nukesor/struct-merge"
@@ -11,7 +11,7 @@ keywords = ["library", "merge", "struct", "proc-macro"]
 edition = "2021"
 
 [badges]
-maintenance = { status="actively-developed" }
+maintenance = { status="deprecated" }
 
 [dependencies]
 struct-merge-codegen = { version="0.1", path="codegen" }
